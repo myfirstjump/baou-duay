@@ -84,6 +84,23 @@ h1 small{font-size:14px;font-weight:600;color:var(--muted);margin-left:8px;lette
 @keyframes pulse{0%,100%{stroke-opacity:1}50%{stroke-opacity:.35}}
 @media (prefers-reduced-motion:reduce){.spot.mine .halo{animation:none}}
 
+/* ---------- bench（場邊觀看） ---------- */
+.bench{margin-top:14px;background:linear-gradient(180deg,#2a2521,#1e1b18);border:1px solid #3b332c;border-radius:12px;padding:10px 12px 12px}
+.bench-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.bench h2{margin:0;font-size:14px;font-weight:800;display:flex;align-items:center;gap:6px}
+.bench h2::before{content:"";width:10px;height:10px;border-radius:50%;background:#adb5bd}
+.bench h2 small{font-size:12px;font-weight:600;color:var(--muted)}
+.bench-count{font-size:13px;color:var(--muted)}
+.bench-list{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-height:28px}
+.wchip{border:1px solid #59616c;background:#3a3f47;border-radius:999px;padding:6px 11px;font-size:14px;font-weight:700;line-height:1.1}
+button.wchip{cursor:pointer;border-color:#e03131}
+.wchip.mine{border-color:var(--mine);color:var(--mine)}
+.wchip.pending{opacity:.55}
+.bench-empty{font-size:13px;color:#69707c}
+.bench-btn{display:block;width:100%;margin-top:10px;background:#2c3139;border-color:#4a525d}
+.bench-btn.on{background:transparent;border-color:var(--mine);color:var(--mine)}
+.bench.closed .bench-btn{opacity:.5}
+
 /* ---------- lineup ---------- */
 .lineup{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
 .col{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 10px 6px}
@@ -146,6 +163,15 @@ h1 small{font-size:14px;font-weight:600;color:var(--muted);margin-left:8px;lette
   <div id="courtWrap" class="court-wrap">
     <svg id="court" viewBox="-8 -8 166 296" role="group" aria-label="籃球場位置圖"></svg>
   </div>
+
+  <section id="benchBox" class="bench" aria-label="場邊觀看">
+    <div class="bench-head">
+      <h2>場邊觀看 <small>今天不打球</small></h2>
+      <span id="benchCount" class="bench-count"></span>
+    </div>
+    <div id="benchList" class="bench-list"></div>
+    <button id="benchBtn" class="btn bench-btn" type="button">我今天在場邊看（不打球）</button>
+  </section>
 
   <section class="lineup" aria-label="登記名單">
     <div class="col off"><h2>進攻</h2><ul id="listOffense"></ul></div>
@@ -278,17 +304,23 @@ function previewApi() {
     let b = mem;
     if (!b) { try { b = JSON.parse(store.get(KEY) || 'null'); } catch (e) { b = null; } }
     if (!b || b.date !== today) {
-      // 預先放兩位「其他同仁」，示範別人的位置你取消不了
-      b = { date: today, offense: { 1: { name: '阿明', tok: 'preview-a' } }, defense: { 5: { name: 'Kevin', tok: 'preview-b' } } };
+      // 預先放幾位「其他同仁」，示範別人的位置你取消不了
+      b = { date: today, offense: { 1: { name: '阿明', tok: 'preview-a' } }, defense: { 5: { name: 'Kevin', tok: 'preview-b' } },
+            bench: [{ id: 'p1', name: '小胖', tok: 'preview-c' }] };
     }
+    if (!Array.isArray(b.bench)) b.bench = [];
     mem = b; return b;
   }
   function save(b) { mem = b; store.set(KEY, JSON.stringify(b)); }
-  function rename(b, tok, name) { SIDES.forEach((sd) => Object.values(b[sd]).forEach((s) => { if (s.tok === tok) s.name = name; })); }
+  function rename(b, tok, name) {
+    SIDES.forEach((sd) => Object.values(b[sd]).forEach((s) => { if (s.tok === tok) s.name = name; }));
+    b.bench.forEach((w) => { if (w.tok === tok) w.name = name; });
+  }
   function snap(b, tok) {
     const list = (sd) => [1, 2, 3, 4, 5].map((pos) => { const s = b[sd][pos]; return s ? { pos, name: s.name, mine: s.tok === tok } : { pos, name: null, mine: false }; });
     const toks = new Set(); SIDES.forEach((sd) => Object.values(b[sd]).forEach((s) => toks.add(s.tok)));
-    return { today: b.date, boardDate: b.date, open: true, nextDate: null, offense: list('offense'), defense: list('defense'), people: toks.size, adminEnabled: true };
+    return { today: b.date, boardDate: b.date, open: true, nextDate: null, offense: list('offense'), defense: list('defense'),
+             bench: b.bench.map((w) => ({ id: w.id, name: w.name, mine: w.tok === tok })), people: toks.size, adminEnabled: true };
   }
   return {
     preview: true,
@@ -302,11 +334,27 @@ function previewApi() {
         else if (cur) { error = 'taken'; message = p.pos + '號位置已經被「' + cur.name + '」選走了'; }
         else {
           Object.keys(spots).forEach((k) => { if (spots[k].tok === p.token) delete spots[k]; });
-          spots[p.pos] = { name: p.name, tok: p.token }; rename(b, p.token, p.name);
+          spots[p.pos] = { name: p.name, tok: p.token };
+          b.bench = b.bench.filter((w) => w.tok !== p.token);
+          rename(b, p.token, p.name);
+        }
+      } else if (p.action === 'bench') {
+        const inBench = b.bench.some((w) => w.tok === p.token);
+        if (!p.on) b.bench = b.bench.filter((w) => w.tok !== p.token);
+        else if (!inBench) {
+          let released = false;
+          SIDES.forEach((sd) => Object.keys(b[sd]).forEach((k) => { if (b[sd][k].tok === p.token) { delete b[sd][k]; released = true; } }));
+          b.bench.push({ id: 'p' + Date.now(), name: p.name, tok: p.token });
+          rename(b, p.token, p.name);
+          if (released) message = '已改為場邊觀看，原本選的位置已釋出';
         }
       } else if (p.action === 'rename') rename(b, p.token, p.name);
       else if (p.action === 'adminCheck') return { ok: true, message: '已進入管理模式（預覽）' };
-      else if (p.action === 'adminClear') { delete b[p.side][p.pos]; message = '已移除'; }
+      else if (p.action === 'adminClear') {
+        if (p.side === 'bench') b.bench = b.bench.filter((w) => w.id !== p.id);
+        else delete b[p.side][p.pos];
+        message = '已移除';
+      }
       save(b);
       const out = { ok: !error, state: snap(b, p.token) };
       if (error) out.error = error;
@@ -425,8 +473,13 @@ function setState(s) { state = s; render(); }
 function render() {
   renderHeader();
   renderSpots();
+  renderBench();
   SIDES.forEach((side) => renderList(side));
   renderSync();
+}
+
+function closedMsg() {
+  return '今天不打球' + (state && state.nextDate ? '，下一場 ' + fmtDate(state.nextDate) + ' 當天開放登記' : '');
 }
 
 function renderHeader() {
@@ -439,9 +492,10 @@ function renderHeader() {
   const badge = $('openBadge');
   badge.textContent = state.open ? '開放登記' : '已結束';
   badge.classList.toggle('open', !!state.open);
-  $('countTxt').textContent = '已登記 ' + (state.people || 0) + ' 人';
+  const watchers = (state.bench || []).length;
+  $('countTxt').textContent = '上場 ' + (state.people || 0) + ' 人' + (watchers ? '・場邊 ' + watchers + ' 人' : '');
   $('subTxt').textContent = state.open
-    ? '點空的圓圈選位置、再點一次取消。進攻、防守各選一個。'
+    ? '點空的圓圈選位置、再點一次取消。進攻、防守各選一個；今天不打可以登記「場邊觀看」。'
     : '今天不打球' + (state.nextDate ? '。下一場 ' + fmtDate(state.nextDate) + '，當天 0:00 自動清空並開放登記。' : '。');
 }
 
@@ -456,6 +510,45 @@ function renderSpots() {
     if (s.name) { e.nm.textContent = s.name; e.nm.style.fontSize = fitSize(s.name).toFixed(2) + 'px'; }
     e.g.setAttribute('aria-label', SIDE_ZH[side] + ' ' + p.n + '號 ' + p.zh + '：' + (s.name ? (s.mine ? '你（' + s.name + '）' : s.name) : '空位'));
   }));
+}
+
+let pendingBench = false;
+function renderBench() {
+  const box = $('benchBox'), list = $('benchList'), btn = $('benchBtn');
+  box.classList.toggle('closed', !!state && !state.open);
+  list.textContent = '';
+  if (state && !Array.isArray(state.bench)) {
+    // 前端已更新、但 Apps Script 還是舊版本
+    const e = document.createElement('span'); e.className = 'bench-empty';
+    e.textContent = '後端尚未更新：請在 Apps Script「管理部署作業」部署新版本。';
+    list.appendChild(e);
+    btn.hidden = true; $('benchCount').textContent = '';
+    return;
+  }
+  const bench = (state && state.bench) || [];
+  btn.hidden = false;
+  if (!bench.length) {
+    const e = document.createElement('span'); e.className = 'bench-empty';
+    e.textContent = state ? '還沒有人' : '…';
+    list.appendChild(e);
+  }
+  bench.forEach((w) => {
+    const canRemove = !!adminKey && !w.mine;
+    const c = document.createElement(canRemove ? 'button' : 'span');
+    c.className = 'wchip' + (w.mine ? ' mine' : '') + (w.mine && pendingBench ? ' pending' : '');
+    c.textContent = w.name + (w.mine ? '（你）' : '');
+    if (canRemove) {
+      c.type = 'button';
+      c.setAttribute('aria-label', '管理模式：移除場邊的 ' + w.name);
+      c.addEventListener('click', () => onBenchAdmin(w));
+    }
+    list.appendChild(c);
+  });
+  const me = bench.some((w) => w.mine);
+  btn.textContent = me ? '✓ 你在場邊觀看・點此取消' : '我今天在場邊看（不打球）';
+  btn.classList.toggle('on', me);
+  btn.disabled = pendingBench;
+  $('benchCount').textContent = bench.length ? bench.length + ' 人' : '';
 }
 
 function renderList(side) {
@@ -559,9 +652,11 @@ async function askName() {
   myName = name;
   store.set('bb_name', name);
   renderHeader();
-  if (changed && state && state.open && SIDES.some((sd) => state[sd].some((s) => s.mine))) {
+  const bench = (state && state.bench) || [];
+  if (changed && state && state.open && (SIDES.some((sd) => state[sd].some((s) => s.mine)) || bench.some((w) => w.mine))) {
     const prev = clone(state);
     SIDES.forEach((sd) => state[sd].forEach((s) => { if (s.mine) s.name = name; }));
+    bench.forEach((w) => { if (w.mine) w.name = name; });
     render();
     await write({ action: 'rename', name }, prev);
   }
@@ -571,7 +666,7 @@ async function askName() {
 async function askAdmin() {
   const v = await openModal({
     title: '管理模式',
-    desc: '輸入 Apps Script 裡設定的 ADMIN_KEY。進入後可以點別人的圓圈把他移除。',
+    desc: '輸入 Apps Script 裡設定的 ADMIN_KEY。進入後可以點別人的圓圈或場邊名字把他移除。',
     type: 'password',
     placeholder: '管理員密碼',
     validate: async (key) => {
@@ -583,7 +678,7 @@ async function askAdmin() {
   if (v == null) return;
   adminKey = v;
   store.set('bb_admin', v);
-  renderHeader();
+  render();
   toast('已進入管理模式');
 }
 
@@ -616,7 +711,7 @@ async function write(payload, prev) {
   }
   if (res.state && id > applied) { applied = id; lastSync = Date.now(); syncErr = ''; setState(res.state); }
   if (res.message) toast(res.message);
-  if (res.error === 'forbidden') { adminKey = ''; store.del('bb_admin'); renderHeader(); }
+  if (res.error === 'forbidden') { adminKey = ''; store.del('bb_admin'); render(); }
   return res;
 }
 
@@ -639,10 +734,7 @@ async function onSpot(side, pos) {
     }
     return;
   }
-  if (!state.open) {
-    toast('今天不打球' + (state.nextDate ? '，下一場 ' + fmtDate(state.nextDate) + ' 當天開放登記' : ''));
-    return;
-  }
+  if (!state.open) { toast(closedMsg()); return; }
   if (!spot.mine && !myName) {
     if (!(await askName())) return;
     spot = state[side][pos - 1]; // 輸入代稱期間畫面可能更新過
@@ -656,6 +748,7 @@ async function onSpot(side, pos) {
   } else {
     state[side].forEach((s) => { if (s.mine) { s.name = null; s.mine = false; } });
     spot.name = myName; spot.mine = true;
+    if (state.bench) state.bench = state.bench.filter((w) => !w.mine); // 要上場就離開場邊
   }
   pendingSpots.add(key);
   render();
@@ -663,6 +756,36 @@ async function onSpot(side, pos) {
   pendingSpots.delete(key);
   renderSpots();
   if (res && res.ok) { try { navigator.vibrate && navigator.vibrate(12); } catch (e) { /* */ } }
+}
+
+async function onBench() {
+  markActive();
+  if (!state) { toast('資料載入中，請稍候'); return; }
+  if (pendingBench) return;
+  if (!state.open) { toast(closedMsg()); return; }
+  const on = !(state.bench || []).some((w) => w.mine);
+  if (on && !myName) { if (!(await askName())) return; }
+
+  const prev = clone(state);
+  if (on) {
+    SIDES.forEach((sd) => state[sd].forEach((s) => { if (s.mine) { s.name = null; s.mine = false; } }));
+    state.bench = (state.bench || []).concat([{ id: '_me', name: myName, mine: true }]);
+  } else {
+    state.bench = state.bench.filter((w) => !w.mine);
+  }
+  pendingBench = true;
+  render();
+  const res = await write({ action: 'bench', on, name: myName, date: state.boardDate }, prev);
+  pendingBench = false;
+  renderBench();
+  if (res && res.ok) { try { navigator.vibrate && navigator.vibrate(12); } catch (e) { /* */ } }
+}
+
+async function onBenchAdmin(w) {
+  markActive();
+  if (!state || !adminKey) return;
+  if (!window.confirm('管理模式：要把「' + w.name + '」從場邊名單移除嗎？')) return;
+  await write({ action: 'adminClear', key: adminKey, side: 'bench', id: w.id, date: state.boardDate });
 }
 
 /* ---------- 自動更新 ---------- */
@@ -683,7 +806,8 @@ document.addEventListener('pointerdown', markActive, { passive: true });
 
 /* ---------- 啟動 ---------- */
 $('meBtn').addEventListener('click', () => { markActive(); askName(); });
-$('adminChip').addEventListener('click', () => { adminKey = ''; store.del('bb_admin'); renderHeader(); toast('已離開管理模式'); });
+$('benchBtn').addEventListener('click', onBench);
+$('adminChip').addEventListener('click', () => { adminKey = ''; store.del('bb_admin'); render(); toast('已離開管理模式'); });
 function checkAdminHash() {
   if (location.hash === '#admin') {
     try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* */ }
