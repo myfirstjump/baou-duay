@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#14161b">
+<title>午間籃球・位置登記</title>
+<meta name="description" content="偶數日工作日中午籃球，點選你今天的進攻／防守位置。">
+<meta property="og:title" content="午間籃球・位置登記">
+<meta property="og:description" content="點選你今天的進攻／防守位置，大家即時看得到誰打哪個位置。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🏀%3C/text%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#14161b; --panel:#1d2027; --panel2:#252932; --text:#f1f3f5; --muted:#a4abb6; --line:#30353f;
+  --off:#d9480f; --off-soft:#ff8a4c; --def:#1971c2; --def-soft:#5aa9f0; --mine:#ffd43b; --ok:#37b24d;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text)}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang TC","Noto Sans TC","Microsoft JhengHei","Segoe UI",Roboto,sans-serif;
+  -webkit-tap-highlight-color:transparent; -webkit-text-size-adjust:100%;
+  background:radial-gradient(120% 60% at 50% 0%,#1f232b 0%,var(--bg) 70%) fixed;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+button{font:inherit;color:inherit}
+.app{max-width:560px;margin:0 auto;padding:12px 12px 36px}
+
+/* ---------- header ---------- */
+.hdr .row1{display:flex;align-items:center;justify-content:space-between;gap:10px}
+h1{margin:0;font-size:20px;font-weight:800;letter-spacing:.5px}
+h1 small{font-size:14px;font-weight:600;color:var(--muted);margin-left:8px;letter-spacing:0}
+.chip{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:7px 12px;font-size:14px;line-height:1;cursor:pointer;white-space:nowrap}
+.chip:active{transform:scale(.97)}
+.chip.me{max-width:52%;overflow:hidden;text-overflow:ellipsis}
+.chip.me.unset{border-color:var(--mine);color:var(--mine)}
+.chip.admin{margin-top:8px;border-color:#e03131;color:#ff8787}
+.hdr .row2{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:10px}
+.date{font-size:22px;font-weight:800;letter-spacing:.3px}
+.badge{font-size:12.5px;font-weight:700;padding:4px 9px;border-radius:999px;background:#495057;color:#fff}
+.badge.open{background:var(--ok)}
+.count{font-size:14px;color:var(--muted)}
+.sub{margin:6px 0 0;font-size:13.5px;color:var(--muted);line-height:1.5}
+.note{margin:8px 0 0;font-size:12.5px;line-height:1.5;color:#ffe08a;background:#3a3215;border:1px solid #5c4d16;border-radius:10px;padding:8px 10px}
+
+/* ---------- court ---------- */
+.court-wrap{
+  width:min(100%,520px);
+  margin:12px auto 0;border-radius:14px;overflow:hidden;
+  box-shadow:0 10px 30px rgba(0,0,0,.45),0 0 0 1px rgba(255,255,255,.06);
+}
+@supports (height:100dvh){
+  .court-wrap{width:min(100%,520px,max(330px,calc((100dvh - 170px) * .5608)))}
+}
+#court{display:block;width:100%;height:auto;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+.court-lines{fill:none;stroke:#fff;stroke-width:.5;stroke-opacity:.95;stroke-linecap:round}
+.court-lines .dash{stroke-dasharray:2 1.7}
+.court-lines .board{stroke-width:.9}
+.court-lines .rim{stroke:#ff7a1a;stroke-width:.65}
+.paint{fill:#8f2d1f;fill-opacity:.62}
+.half-label{fill:#fff;fill-opacity:.9;font-size:5px;font-weight:800;text-anchor:middle;letter-spacing:.6px}
+
+.spot{cursor:pointer;outline:none}
+.spot .hit{fill:transparent}
+.spot .halo{fill:none;stroke:none}
+.spot .disc{fill:rgba(15,17,22,.45);stroke:rgba(255,255,255,.92);stroke-width:.7;stroke-dasharray:2.2 1.6;transition:transform .12s}
+.spot text{text-anchor:middle;fill:#fff;font-weight:800;pointer-events:none}
+.spot .abbr{font-size:5.4px;letter-spacing:.2px}
+.spot .nm,.spot .sub2{display:none}
+.spot .sub2{font-size:3.3px;font-weight:700;fill-opacity:.85}
+.spot.taken .abbr{display:none}
+.spot.taken .nm,.spot.taken .sub2{display:inline}
+.spot.offense.taken .disc{fill:var(--off);stroke:#fff;stroke-dasharray:none}
+.spot.defense.taken .disc{fill:var(--def);stroke:#fff;stroke-dasharray:none}
+.spot.mine .disc{stroke:var(--mine);stroke-width:.9}
+.spot.mine .halo{stroke:var(--mine);stroke-width:1.5;animation:pulse 1.8s ease-in-out infinite}
+.spot .badge circle{fill:#15171c;stroke:#fff;stroke-width:.45}
+.spot.offense.taken .badge circle{fill:#7d2a07}
+.spot.defense.taken .badge circle{fill:#0b3d6e}
+.spot .badge text{font-size:4.6px}
+.spot:active .disc{transform:scale(.93)}
+.spot.pending{opacity:.55}
+.spot:focus-visible .halo{stroke:#fff;stroke-width:1;stroke-dasharray:1 1}
+.court-wrap.closed .spot .disc{fill-opacity:.7}
+@keyframes pulse{0%,100%{stroke-opacity:1}50%{stroke-opacity:.35}}
+@media (prefers-reduced-motion:reduce){.spot.mine .halo{animation:none}}
+
+/* ---------- lineup ---------- */
+.lineup{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+.col{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 10px 6px}
+.col h2{margin:0 0 6px;font-size:14px;font-weight:800;display:flex;align-items:center;gap:6px}
+.col h2::before{content:"";width:10px;height:10px;border-radius:50%;background:var(--off)}
+.col.def h2::before{background:var(--def)}
+.col ul{list-style:none;margin:0;padding:0}
+.col li button{display:flex;align-items:center;gap:7px;width:100%;background:none;border:0;border-top:1px solid var(--line);padding:7px 2px;text-align:left;cursor:pointer;font-size:14px}
+.col li:first-child button{border-top:0}
+.col .num{flex:none;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:800;background:var(--panel2)}
+.col.off li.taken .num{background:var(--off)}
+.col.def li.taken .num{background:var(--def)}
+.col .pos{flex:none;width:24px;font-size:12px;font-weight:700;color:var(--muted)}
+.col .who{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700}
+.col li.empty .who{color:#69707c;font-weight:400}
+.col li.mine .who{color:var(--mine)}
+.sync{margin:12px 0 0;text-align:center;font-size:12px;color:#717887}
+.sync.err{color:#ff8787}
+
+/* ---------- toast & modal ---------- */
+.toast{position:fixed;left:50%;bottom:calc(22px + env(safe-area-inset-bottom));transform:translate(-50%,20px);opacity:0;pointer-events:none;
+  background:#f1f3f5;color:#14161b;font-size:14.5px;font-weight:600;padding:10px 16px;border-radius:12px;max-width:calc(100% - 32px);
+  box-shadow:0 8px 24px rgba(0,0,0,.4);transition:opacity .2s,transform .2s;z-index:30;text-align:center;line-height:1.45}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center;z-index:20;padding:12px}
+.modal[hidden]{display:none}
+@media (min-height:560px){.modal{align-items:center}}
+.sheet{width:min(100%,420px);background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px 16px 14px;box-shadow:0 20px 50px rgba(0,0,0,.5)}
+.sheet h3{margin:0 0 6px;font-size:18px}
+.sheet p{margin:0 0 12px;font-size:13.5px;color:var(--muted);line-height:1.55}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.chips[hidden]{display:none}
+.sheet input{width:100%;font-size:17px;padding:12px;border-radius:10px;border:1px solid #444b57;background:#111317;color:var(--text);outline:none}
+.sheet input:focus{border-color:var(--mine)}
+.sheet .err{color:#ff8787;margin:8px 0 0}
+.actions{display:flex;gap:10px;margin-top:14px}
+.btn{flex:1;border-radius:10px;padding:12px;font-size:16px;font-weight:700;cursor:pointer;border:1px solid var(--line)}
+.btn.ghost{background:transparent}
+.btn.primary{background:var(--mine);color:#1a1a1a;border-color:var(--mine)}
+.btn:disabled{opacity:.6}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="hdr">
+    <div class="row1">
+      <h1>午間籃球<small>位置登記</small></h1>
+      <button id="meBtn" class="chip me" type="button"></button>
+    </div>
+    <div class="row2">
+      <span id="dateTxt" class="date">—</span>
+      <span id="openBadge" class="badge">載入中</span>
+      <span id="countTxt" class="count"></span>
+    </div>
+    <p id="subTxt" class="sub"></p>
+    <p id="previewNote" class="note" hidden>預覽模式：尚未連上雲端，資料只存在這台裝置。在 index.html 填入 API_URL 後才會跟大家同步。</p>
+    <button id="adminChip" class="chip admin" type="button" hidden>管理模式中・點此離開</button>
+  </header>
+
+  <div id="courtWrap" class="court-wrap">
+    <svg id="court" viewBox="-8 -8 166 296" role="group" aria-label="籃球場位置圖"></svg>
+  </div>
+
+  <section class="lineup" aria-label="登記名單">
+    <div class="col off"><h2>進攻</h2><ul id="listOffense"></ul></div>
+    <div class="col def"><h2>防守</h2><ul id="listDefense"></ul></div>
+  </section>
+  <p id="syncTxt" class="sync"></p>
+</div>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<div id="modal" class="modal" hidden>
+  <form id="modalForm" class="sheet" autocomplete="off" novalidate>
+    <h3 id="modalTitle"></h3>
+    <p id="modalDesc"></p>
+    <div id="modalChips" class="chips" hidden></div>
+    <input id="modalInput" type="text" enterkeyhint="done" aria-labelledby="modalTitle">
+    <p id="modalErr" class="err" hidden></p>
+    <div class="actions">
+      <button type="button" id="modalCancel" class="btn ghost">取消</button>
+      <button type="submit" id="modalOk" class="btn primary">確定</button>
+    </div>
+  </form>
+</div>
+
+<script>
+(function () {
+'use strict';
+
+/* ============================ 設定 ============================ */
+const CONFIG = {
+  // 部署 Apps Script 後，把「網頁應用程式」網址（https://script.google.com/macros/s/…/exec）貼在這裡。
+  // 留空 = 預覽模式（資料只存在這台裝置，用來先看畫面）。
+  API_URL: 'https://script.google.com/macros/s/AKfycbxjRBb0fg_F4V5dJVbKMYkTwzQnD_UOacoDeBYz1v992o9RilOEyVG_GsF9bCTNSAco/exec',
+  // 可選：常用代稱清單，第一次登記時可以直接點自己的名字。例如 ['阿明', 'Kevin', '小胖']
+  ROSTER: ['祥哥', '建傑', '智凱', '哲瑋', '愛群', '智冠', '大傑', '管管', '彥綸', '家億', '劍豪'],
+  POLL_MS: 4000,        // 畫面開著時多久同步一次（毫秒）
+  IDLE_POLL_MS: 30000,  // 超過 10 分鐘沒操作，放慢同步
+};
+/* ============================================================= */
+
+const NAME_MAX = 10; // 中文字算 2、英數字算 1；與後端 NAME_MAX_WIDTH 相同
+const SIDES = ['offense', 'defense'];
+const SIDE_ZH = { offense: '進攻', defense: '防守' };
+const POS = [
+  { n: 1, abbr: 'PG', zh: '控球後衛' },
+  { n: 2, abbr: 'SG', zh: '得分後衛' },
+  { n: 3, abbr: 'SF', zh: '小前鋒' },
+  { n: 4, abbr: 'PF', zh: '大前鋒' },
+  { n: 5, abbr: 'C',  zh: '中鋒' },
+];
+// 場地座標：1 單位 = 10 公分，球場 150 x 280（FIBA 15m x 28m）。上半場進攻、下半場防守。
+const LAYOUT = {
+  offense: { 1: [75, 92], 2: [130, 66], 3: [20, 66], 4: [52, 52], 5: [99, 28] },
+  defense: { 1: [75, 196], 2: [124, 218], 3: [26, 218], 4: [54, 234], 5: [97, 252] },
+};
+
+/* ---------- 小工具 ---------- */
+const $ = (id) => document.getElementById(id);
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* 無痕模式等 */ } },
+  del(k) { try { localStorage.removeItem(k); } catch (e) { /* */ } },
+};
+const isWide = (ch) => ch.codePointAt(0) > 0x2e7f;
+function nameWidth(s) { let w = 0; for (const ch of s) w += isWide(ch) ? 2 : 1; return w; }
+function cleanName(v) {
+  const raw = String(v || '').replace(/[\u0000-\u001F\u007F-\u009F]/g, '').replace(/\s+/g, ' ').trim();
+  let out = '', w = 0;
+  for (const ch of raw) { const cw = isWide(ch) ? 2 : 1; if (w + cw > NAME_MAX) break; out += ch; w += cw; }
+  return out.trim();
+}
+function fitSize(name) {
+  let u = 0;
+  for (const ch of name) u += isWide(ch) ? 1 : (/[A-Z0-9]/.test(ch) ? 0.66 : 0.56);
+  return Math.max(3, Math.min(7, 19.5 / Math.max(u, 1)));
+}
+const WD = '日一二三四五六';
+function fmtDate(s) {
+  if (!s) return '—';
+  const p = s.split('-').map(Number);
+  return p[1] + '/' + p[2] + '（' + WD[new Date(Date.UTC(p[0], p[1] - 1, p[2])).getUTCDay()] + '）';
+}
+const pad = (n) => String(n).padStart(2, '0');
+const ymdLocal = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+const clone = (o) => JSON.parse(JSON.stringify(o));
+function genToken() {
+  const a = new Uint8Array(16);
+  if (window.crypto && crypto.getRandomValues) crypto.getRandomValues(a);
+  else for (let i = 0; i < a.length; i++) a[i] = Math.floor(Math.random() * 256);
+  return Array.from(a, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/* ---------- 這支手機的身分：隨機識別碼（看不到）＋ 代稱（大家看得到） ---------- */
+let token = store.get('bb_token');
+if (!token || !/^[A-Za-z0-9_-]{16,64}$/.test(token)) { token = genToken(); store.set('bb_token', token); }
+let myName = cleanName(store.get('bb_name') || '');
+let adminKey = store.get('bb_admin') || '';
+
+/* ---------- 後端 ---------- */
+const api = CONFIG.API_URL ? remoteApi(CONFIG.API_URL.trim()) : previewApi();
+
+function remoteApi(url) {
+  async function getJSON(u, opts) {
+    const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const t = ctrl ? setTimeout(() => ctrl.abort(), 15000) : 0;
+    try {
+      const r = await fetch(u, Object.assign(ctrl ? { signal: ctrl.signal } : {}, opts));
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return await r.json();
+    } finally { clearTimeout(t); }
+  }
+  const sep = url.indexOf('?') >= 0 ? '&' : '?';
+  return {
+    preview: false,
+    state() {
+      return getJSON(url + sep + 'action=state&token=' + encodeURIComponent(token) + '&_=' + Date.now(), { cache: 'no-store' });
+    },
+    // 不加 Content-Type（預設 text/plain）→ 不會觸發 CORS 預檢，Apps Script 可直接收
+    call(p) { return getJSON(url, { method: 'POST', body: JSON.stringify(p) }); },
+  };
+}
+
+// 預覽模式：在瀏覽器裡模擬後端，方便還沒部署前先看畫面。
+function previewApi() {
+  const KEY = 'bb_preview_board';
+  let mem = null;
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  function load() {
+    const today = ymdLocal(new Date());
+    let b = mem;
+    if (!b) { try { b = JSON.parse(store.get(KEY) || 'null'); } catch (e) { b = null; } }
+    if (!b || b.date !== today) {
+      // 預先放兩位「其他同仁」，示範別人的位置你取消不了
+      b = { date: today, offense: { 1: { name: '阿明', tok: 'preview-a' } }, defense: { 5: { name: 'Kevin', tok: 'preview-b' } } };
+    }
+    mem = b; return b;
+  }
+  function save(b) { mem = b; store.set(KEY, JSON.stringify(b)); }
+  function rename(b, tok, name) { SIDES.forEach((sd) => Object.values(b[sd]).forEach((s) => { if (s.tok === tok) s.name = name; })); }
+  function snap(b, tok) {
+    const list = (sd) => [1, 2, 3, 4, 5].map((pos) => { const s = b[sd][pos]; return s ? { pos, name: s.name, mine: s.tok === tok } : { pos, name: null, mine: false }; });
+    const toks = new Set(); SIDES.forEach((sd) => Object.values(b[sd]).forEach((s) => toks.add(s.tok)));
+    return { today: b.date, boardDate: b.date, open: true, nextDate: null, offense: list('offense'), defense: list('defense'), people: toks.size, adminEnabled: true };
+  }
+  return {
+    preview: true,
+    async state() { await wait(120); return { ok: true, state: snap(load(), token) }; },
+    async call(p) {
+      await wait(250);
+      const b = load(); let error = null, message = '';
+      if (p.action === 'toggle') {
+        const spots = b[p.side], cur = spots[p.pos];
+        if (cur && cur.tok === p.token) delete spots[p.pos];
+        else if (cur) { error = 'taken'; message = p.pos + '號位置已經被「' + cur.name + '」選走了'; }
+        else {
+          Object.keys(spots).forEach((k) => { if (spots[k].tok === p.token) delete spots[k]; });
+          spots[p.pos] = { name: p.name, tok: p.token }; rename(b, p.token, p.name);
+        }
+      } else if (p.action === 'rename') rename(b, p.token, p.name);
+      else if (p.action === 'adminCheck') return { ok: true, message: '已進入管理模式（預覽）' };
+      else if (p.action === 'adminClear') { delete b[p.side][p.pos]; message = '已移除'; }
+      save(b);
+      const out = { ok: !error, state: snap(b, p.token) };
+      if (error) out.error = error;
+      if (message) out.message = message;
+      return out;
+    },
+  };
+}
+
+/* ---------- 球場繪製 ---------- */
+const SVGNS = 'http://www.w3.org/2000/svg';
+function el(tag, attrs, parent) {
+  const n = document.createElementNS(SVGNS, tag);
+  for (const k in attrs) n.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(n);
+  return n;
+}
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function buildCourt(svg) {
+  const X0 = -8, Y0 = -8, W = 166, H = 296;
+  const defs = el('defs', {}, svg);
+  const sheen = el('radialGradient', { id: 'sheen', cx: '50%', cy: '42%', r: '70%' }, defs);
+  el('stop', { offset: '0%', 'stop-color': '#fff', 'stop-opacity': '.20' }, sheen);
+  el('stop', { offset: '55%', 'stop-color': '#fff', 'stop-opacity': '.03' }, sheen);
+  el('stop', { offset: '100%', 'stop-color': '#000', 'stop-opacity': '.30' }, sheen);
+
+  // 木地板：沿球場長邊鋪設的楓木條，色調隨機微調
+  const floor = el('g', {}, svg);
+  const rnd = mulberry32(20261109);
+  const PW = 2.6;
+  let seams = '';
+  for (let x = X0; x < X0 + W; x += PW) {
+    let y = Y0 - rnd() * 60;
+    seams += 'M' + x.toFixed(2) + ' ' + Y0 + 'V' + (Y0 + H) + ' ';
+    while (y < Y0 + H) {
+      const len = 28 + rnd() * 72;
+      const hue = 29 + rnd() * 7, sat = 50 + rnd() * 14, lit = 55 + rnd() * 11;
+      el('rect', { x: x.toFixed(2), y: y.toFixed(2), width: PW + 0.03, height: len.toFixed(2), fill: 'hsl(' + hue.toFixed(1) + ',' + sat.toFixed(1) + '%,' + lit.toFixed(1) + '%)' }, floor);
+      y += len;
+      seams += 'M' + x.toFixed(2) + ' ' + y.toFixed(2) + 'h' + PW + ' ';
+    }
+  }
+  el('path', { d: seams, stroke: '#5a3212', 'stroke-opacity': '.28', 'stroke-width': '.14', fill: 'none' }, floor);
+  // 界外區加深
+  el('path', { d: 'M-8-8h166v296h-166z M0 0v280h150v-280z', fill: '#3d1d08', 'fill-opacity': '.42', 'fill-rule': 'evenodd' }, floor);
+
+  // 油漆區
+  const paint = el('g', { class: 'paint' }, svg);
+  el('rect', { x: 50.5, y: 0, width: 49, height: 58 }, paint);
+  el('rect', { x: 50.5, y: 222, width: 49, height: 58 }, paint);
+  el('circle', { cx: 75, cy: 140, r: 18 }, paint);
+
+  el('rect', { x: X0, y: Y0, width: W, height: H, fill: 'url(#sheen)' }, svg);
+
+  // 場線
+  const L = el('g', { class: 'court-lines' }, svg);
+  el('rect', { x: 0, y: 0, width: 150, height: 280 }, L);
+  el('path', { d: 'M0 140H150' }, L);
+  el('circle', { cx: 75, cy: 140, r: 18 }, L);
+  [false, true].forEach((mirror) => {
+    const Y = (y) => (mirror ? 280 - y : y).toFixed(2);
+    const s = mirror ? 1 : 0; // 鏡像時弧線方向相反
+    el('path', { d: 'M9 ' + Y(0) + 'V' + Y(29.9) + 'A67.5 67.5 0 0 ' + s + ' 141 ' + Y(29.9) + 'V' + Y(0) }, L);       // 三分線
+    el('path', { d: 'M50.5 ' + Y(0) + 'V' + Y(58) + 'H99.5V' + Y(0) }, L);                                             // 禁區
+    el('path', { d: 'M57 ' + Y(58) + 'A18 18 0 0 ' + s + ' 93 ' + Y(58) }, L);                                         // 罰球圈（外）
+    el('path', { d: 'M57 ' + Y(58) + 'A18 18 0 0 ' + (1 - s) + ' 93 ' + Y(58), class: 'dash' }, L);                   // 罰球圈（內，虛線）
+    el('path', { d: 'M62.5 ' + Y(12) + 'V' + Y(15.75) + 'A12.5 12.5 0 0 ' + s + ' 87.5 ' + Y(15.75) + 'V' + Y(12) }, L); // 合理衝撞區
+    let ticks = '';
+    [17.5, 26, 34.5, 43].forEach((t) => { ticks += 'M50.5 ' + Y(t) + 'h-1.2M99.5 ' + Y(t) + 'h1.2'; });
+    el('path', { d: ticks }, L);
+    el('path', { d: 'M66 ' + Y(12) + 'H84', class: 'board' }, L);                                                      // 籃板
+    el('path', { d: 'M75 ' + Y(12) + 'V' + Y(13.5) }, L);
+    el('circle', { cx: 75, cy: Y(15.75), r: 2.25, class: 'rim' }, L);                                                  // 籃框
+  });
+  const t1 = el('text', { x: 75, y: 134.5, class: 'half-label' }, svg); t1.textContent = '▲ 進攻';
+  const t2 = el('text', { x: 75, y: 150, class: 'half-label' }, svg); t2.textContent = '防守 ▼';
+}
+
+const spotEls = {};
+function buildSpots(svg) {
+  const layer = el('g', { id: 'spots' }, svg);
+  SIDES.forEach((side) => POS.forEach((p) => {
+    const xy = LAYOUT[side][p.n];
+    const g = el('g', { class: 'spot ' + side, transform: 'translate(' + xy[0] + ' ' + xy[1] + ')', tabindex: '0', role: 'button' }, layer);
+    el('circle', { class: 'hit', r: 15 }, g);
+    el('circle', { class: 'halo', r: 14.4 }, g);
+    el('circle', { class: 'disc', r: 12 }, g);
+    const abbr = el('text', { class: 'abbr', y: 0, dy: '.36em' }, g); abbr.textContent = p.abbr;
+    const nm = el('text', { class: 'nm', y: -1.2, dy: '.36em' }, g);
+    const sub = el('text', { class: 'sub2', y: 7.2, dy: '.36em' }, g); sub.textContent = p.abbr;
+    const b = el('g', { class: 'badge', transform: 'translate(9 -9)' }, g);
+    el('circle', { r: 4.4 }, b);
+    const bt = el('text', { dy: '.36em' }, b); bt.textContent = p.n;
+    spotEls[side + p.n] = { g, nm };
+    g.addEventListener('click', () => onSpot(side, p.n));
+    g.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSpot(side, p.n); } });
+  }));
+}
+
+/* ---------- 狀態與畫面 ---------- */
+let state = null;
+const pendingSpots = new Set();
+let seq = 0, applied = 0, pendingWrites = 0;
+let lastSync = 0, syncErr = '';
+
+function setState(s) { state = s; render(); }
+
+function render() {
+  renderHeader();
+  renderSpots();
+  SIDES.forEach((side) => renderList(side));
+  renderSync();
+}
+
+function renderHeader() {
+  $('meBtn').textContent = myName ? '我：' + myName + ' ✎' : '設定代稱';
+  $('meBtn').classList.toggle('unset', !myName);
+  $('adminChip').hidden = !adminKey;
+  $('previewNote').hidden = !api.preview;
+  if (!state) return;
+  $('dateTxt').textContent = state.boardDate ? fmtDate(state.boardDate) + ' 中午' : '尚無球局';
+  const badge = $('openBadge');
+  badge.textContent = state.open ? '開放登記' : '已結束';
+  badge.classList.toggle('open', !!state.open);
+  $('countTxt').textContent = '已登記 ' + (state.people || 0) + ' 人';
+  $('subTxt').textContent = state.open
+    ? '點空的圓圈選位置、再點一次取消。進攻、防守各選一個。'
+    : '今天不打球' + (state.nextDate ? '。下一場 ' + fmtDate(state.nextDate) + '，當天 0:00 自動清空並開放登記。' : '。');
+}
+
+function renderSpots() {
+  $('courtWrap').classList.toggle('closed', !!state && !state.open);
+  SIDES.forEach((side) => POS.forEach((p) => {
+    const s = state ? state[side][p.n - 1] : { name: null, mine: false };
+    const e = spotEls[side + p.n];
+    e.g.classList.toggle('taken', !!s.name);
+    e.g.classList.toggle('mine', !!s.mine);
+    e.g.classList.toggle('pending', pendingSpots.has(side + p.n));
+    if (s.name) { e.nm.textContent = s.name; e.nm.style.fontSize = fitSize(s.name).toFixed(2) + 'px'; }
+    e.g.setAttribute('aria-label', SIDE_ZH[side] + ' ' + p.n + '號 ' + p.zh + '：' + (s.name ? (s.mine ? '你（' + s.name + '）' : s.name) : '空位'));
+  }));
+}
+
+function renderList(side) {
+  const ul = $(side === 'offense' ? 'listOffense' : 'listDefense');
+  ul.textContent = '';
+  POS.forEach((p) => {
+    const s = state ? state[side][p.n - 1] : null;
+    const li = document.createElement('li');
+    li.className = s && s.name ? (s.mine ? 'taken mine' : 'taken') : 'empty';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    const num = document.createElement('span'); num.className = 'num'; num.textContent = p.n;
+    const pos = document.createElement('span'); pos.className = 'pos'; pos.textContent = p.abbr;
+    const who = document.createElement('span'); who.className = 'who';
+    who.textContent = s && s.name ? s.name + (s.mine ? '（你）' : '') : '—';
+    btn.append(num, pos, who);
+    btn.setAttribute('aria-label', SIDE_ZH[side] + ' ' + p.n + '號 ' + p.zh + '：' + (s && s.name ? s.name : '空位'));
+    btn.addEventListener('click', () => onSpot(side, p.n));
+    li.appendChild(btn);
+    ul.appendChild(li);
+  });
+}
+
+function renderSync() {
+  const t = $('syncTxt');
+  t.classList.toggle('err', !!syncErr);
+  if (syncErr) { t.textContent = syncErr; return; }
+  if (!lastSync) { t.textContent = '同步中…'; return; }
+  const d = new Date(lastSync);
+  t.textContent = '畫面每幾秒自動更新・最後同步 ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+}
+
+let toastTimer = 0;
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2800);
+}
+
+/* ---------- 對話框 ---------- */
+function openModal(opts) {
+  return new Promise((resolve) => {
+    const root = $('modal'), form = $('modalForm'), input = $('modalInput'), err = $('modalErr'), ok = $('modalOk');
+    $('modalTitle').textContent = opts.title;
+    $('modalDesc').textContent = opts.desc || '';
+    const chips = $('modalChips');
+    chips.textContent = '';
+    (opts.chips || []).forEach((c) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'chip'; b.textContent = c;
+      b.addEventListener('click', () => { input.value = c; submit(); });
+      chips.appendChild(b);
+    });
+    chips.hidden = !(opts.chips && opts.chips.length);
+    input.type = opts.type || 'text';
+    input.value = opts.value || '';
+    input.placeholder = opts.placeholder || '';
+    err.hidden = true;
+    root.hidden = false;
+    setTimeout(() => { try { input.focus(); } catch (e) { /* */ } }, 60);
+    let busy = false;
+    async function submit() {
+      if (busy) return;
+      busy = true; ok.disabled = true;
+      let msg = null;
+      try { msg = opts.validate ? await opts.validate(input.value) : null; } catch (e) { msg = '連線失敗，請再試一次'; }
+      busy = false; ok.disabled = false;
+      if (msg) { err.textContent = msg; err.hidden = false; return; }
+      done(input.value);
+    }
+    function done(v) {
+      root.hidden = true;
+      form.onsubmit = null; $('modalCancel').onclick = null; root.onclick = null;
+      resolve(v);
+    }
+    form.onsubmit = (e) => { e.preventDefault(); submit(); };
+    $('modalCancel').onclick = () => done(null);
+    root.onclick = (e) => { if (e.target === root) done(null); };
+  });
+}
+
+async function askName() {
+  const v = await openModal({
+    title: myName ? '修改代稱' : '你的代稱',
+    desc: '會顯示在你選的圓圈裡，大家同時看得到誰打哪個位置。這支手機會記住，之後不用再輸入。',
+    chips: CONFIG.ROSTER,
+    value: myName,
+    placeholder: '例如：阿明、Kevin（最多 5 個中文字）',
+    validate: (raw) => {
+      const s = String(raw || '').trim();
+      if (!s) return '請輸入代稱';
+      if (nameWidth(s) > NAME_MAX) return '太長了：最多 5 個中文字或 10 個英文字母';
+      return null;
+    },
+  });
+  if (v == null) return false;
+  const name = cleanName(v);
+  const changed = name !== myName;
+  myName = name;
+  store.set('bb_name', name);
+  renderHeader();
+  if (changed && state && state.open && SIDES.some((sd) => state[sd].some((s) => s.mine))) {
+    const prev = clone(state);
+    SIDES.forEach((sd) => state[sd].forEach((s) => { if (s.mine) s.name = name; }));
+    render();
+    await write({ action: 'rename', name }, prev);
+  }
+  return true;
+}
+
+async function askAdmin() {
+  const v = await openModal({
+    title: '管理模式',
+    desc: '輸入 Apps Script 裡設定的 ADMIN_KEY。進入後可以點別人的圓圈把他移除。',
+    type: 'password',
+    placeholder: '管理員密碼',
+    validate: async (key) => {
+      if (!key) return '請輸入密碼';
+      const res = await api.call({ action: 'adminCheck', key });
+      return res && res.ok ? null : (res && res.message) || '密碼錯誤';
+    },
+  });
+  if (v == null) return;
+  adminKey = v;
+  store.set('bb_admin', v);
+  renderHeader();
+  toast('已進入管理模式');
+}
+
+/* ---------- 與後端同步 ---------- */
+async function refresh() {
+  const id = ++seq;
+  try {
+    const res = await api.state();
+    if (!res || !res.ok || !res.state) throw new Error((res && res.message) || 'bad response');
+    lastSync = Date.now(); syncErr = '';
+    if (id > applied && pendingWrites === 0) { applied = id; setState(res.state); }
+    else renderSync();
+  } catch (e) {
+    syncErr = '連不上伺服器，重試中…（若一直出現，請確認 Apps Script 部署的存取權是「所有人」）';
+    renderSync();
+  }
+}
+
+async function write(payload, prev) {
+  pendingWrites++;
+  const id = ++seq;
+  let res = null;
+  try { res = await api.call(Object.assign({ token }, payload)); } catch (e) { res = null; }
+  pendingWrites--;
+  if (!res || (!res.ok && !res.state)) {
+    if (prev && id > applied) setState(prev);
+    toast((res && res.message) || '連線失敗，請再試一次');
+    refresh();
+    return res;
+  }
+  if (res.state && id > applied) { applied = id; lastSync = Date.now(); syncErr = ''; setState(res.state); }
+  if (res.message) toast(res.message);
+  if (res.error === 'forbidden') { adminKey = ''; store.del('bb_admin'); renderHeader(); }
+  return res;
+}
+
+async function onSpot(side, pos) {
+  markActive();
+  if (!state) { toast('資料載入中，請稍候'); return; }
+  const key = side + pos;
+  if (pendingSpots.has(key)) return;
+  const p = POS[pos - 1];
+  const label = SIDE_ZH[side] + ' ' + pos + '號 ' + p.abbr;
+  let spot = state[side][pos - 1];
+
+  if (spot.name && !spot.mine) {
+    if (adminKey && window.confirm('管理模式：要移除「' + spot.name + '」的 ' + label + ' 嗎？')) {
+      pendingSpots.add(key); renderSpots();
+      await write({ action: 'adminClear', key: adminKey, side, pos, date: state.boardDate });
+      pendingSpots.delete(key); renderSpots();
+    } else if (!adminKey) {
+      toast(label + ' 已經是「' + spot.name + '」的了');
+    }
+    return;
+  }
+  if (!state.open) {
+    toast('今天不打球' + (state.nextDate ? '，下一場 ' + fmtDate(state.nextDate) + ' 當天開放登記' : ''));
+    return;
+  }
+  if (!spot.mine && !myName) {
+    if (!(await askName())) return;
+    spot = state[side][pos - 1]; // 輸入代稱期間畫面可能更新過
+    if (spot.name && !spot.mine) { toast(label + ' 剛剛被「' + spot.name + '」選走了'); return; }
+  }
+
+  // 先更新畫面（樂觀更新），再送到伺服器確認
+  const prev = clone(state);
+  if (spot.mine) {
+    spot.name = null; spot.mine = false;
+  } else {
+    state[side].forEach((s) => { if (s.mine) { s.name = null; s.mine = false; } });
+    spot.name = myName; spot.mine = true;
+  }
+  pendingSpots.add(key);
+  render();
+  const res = await write({ action: 'toggle', side, pos, name: myName, date: state.boardDate }, prev);
+  pendingSpots.delete(key);
+  renderSpots();
+  if (res && res.ok) { try { navigator.vibrate && navigator.vibrate(12); } catch (e) { /* */ } }
+}
+
+/* ---------- 自動更新 ---------- */
+let pollTimer = 0, lastActive = Date.now();
+function markActive() { lastActive = Date.now(); }
+function schedule() {
+  clearTimeout(pollTimer);
+  if (document.hidden) return;
+  const idle = Date.now() - lastActive > 10 * 60 * 1000;
+  pollTimer = setTimeout(async () => { await refresh(); schedule(); }, idle ? CONFIG.IDLE_POLL_MS : CONFIG.POLL_MS);
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { clearTimeout(pollTimer); return; }
+  markActive(); refresh(); schedule();
+});
+window.addEventListener('pageshow', (e) => { if (e.persisted) { refresh(); schedule(); } });
+document.addEventListener('pointerdown', markActive, { passive: true });
+
+/* ---------- 啟動 ---------- */
+$('meBtn').addEventListener('click', () => { markActive(); askName(); });
+$('adminChip').addEventListener('click', () => { adminKey = ''; store.del('bb_admin'); renderHeader(); toast('已離開管理模式'); });
+function checkAdminHash() {
+  if (location.hash === '#admin') {
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* */ }
+    askAdmin();
+  }
+}
+window.addEventListener('hashchange', checkAdminHash);
+
+buildCourt($('court'));
+buildSpots($('court'));
+render();
+checkAdminHash();
+refresh().then(schedule);
+})();
+</script>
+</body>
+</html>
